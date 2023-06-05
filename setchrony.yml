@@ -1,0 +1,27 @@
+---
+- name: set chrony
+  hosts: all,localhost
+  gather_facts: false
+  vars:
+    ansible_connection: ssh
+  tasks:
+    - name: install chrony
+      apt:
+        name: chrony
+        state: present
+        update_cache: yes
+    - name: set all chrony
+      template:
+        src: ./template/chrony.conf.j2
+        dest: /etc/chrony/chrony.conf
+      notify: restart chrony
+  handlers:
+    - name: restart chrony and chronyd
+      service:
+        name: "{{ item }}"
+        state: restarted
+        enabled: yes
+      loop:
+        - chrony
+        - chronyd
+      listen: restart chrony

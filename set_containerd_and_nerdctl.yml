@@ -1,0 +1,65 @@
+---
+- name: set containerd.service
+  hosts: master,node
+  gather_facts: false
+  vars:
+    package_dir:
+      - ./package/containerd/bin/
+      - ./package/nerdctl/
+  tasks:
+    - name: check if containerd and nerdctl install success
+      command: "nerdctl ps"
+      register: nerdctl
+      ignore_errors: true
+      changed_when: false
+    - block:
+        - name: copy nerdctl and containerd
+          synchronize:
+            src: "{{ item }}"
+            dest: /usr/local/bin
+          loop: "{{ package_dir }}"
+          notify: restart containerd
+        - name: create dir
+          file:
+            path: /opt/cni/bin
+            state: directory
+        - name: synchronize cni
+          synchronize:
+            src: ./package/cni/
+            dest: /opt/cni/bin
+        - name: copy containerd.service
+          template:
+            src: ./template/containerd.service.j2
+            dest: /etc/systemd/system/containerd.service
+            mode: "0644"
+        - name: systemctl daemon-reload
+          command: "systemctl daemon-reload"
+          changed_when: false
+        - name: create dir
+          file:
+            path: "{{ item }}"
+            state: directory
+          loop: 
+            - /etc/nerdctl/
+            - /etc/containerd/
+        - name: set nerdctl config
+          template:
+            src: ./template/nerdctl.toml.j2
+            dest: /etc/nerdctl/nerdctl.toml
+        - name: set containerd config
+          template:
+            src: ./template/config.toml.j2
+            dest: /etc/containerd/config.toml
+          notify: restart containerd
+        - name: synchronize runc
+          synchronize:
+            src: ./package/runc/runc
+            dest: /usr/local/bin/runc
+      when: nerdctl.rc != 0
+  handlers:
+    - name: set containerd.service
+      service:
+        name: containerd
+        state: restarted
+        enabled: yes
+      listen: restart containerd

@@ -1,0 +1,55 @@
+---
+- name: Install and initialize kubeadm, kubectl, and kubelet
+  hosts: master,node,localhost
+  gather_facts: false
+  vars:
+    ansible_connection: ssh
+  tasks:
+    - name: install package
+      apt:
+        name: kubectl={{ K8S_VERSION }}-00
+        state: present
+        update_cache: yes
+      when: inventory_hostname == 'localhost'
+    - name: install package
+      apt:
+        name: kubeadm={{ K8S_VERSION }}-00,kubectl={{ K8S_VERSION }}-00,kubelet={{ K8S_VERSION }}-00
+        state: present
+        update_cache: yes
+      when: inventory_hostname in groups['master'] or inventory_hostname in groups['node']
+    - name: Check if K8S cluster exists
+      command: "kubectl get nodes"
+      register: K8S_result
+      ignore_errors: yes
+      delegate_to: "{{ FIRSTMASTER }}"
+      run_once: true
+      changed_when: false
+    - block:
+        - name: check FIRSTMASTER if setup
+          command: "kubectl get nodes"
+          register: firstmaster_result
+          ignore_errors: true
+          delegate_to: "{{ FIRSTMASTER }}"
+          run_once: true
+          changed_when: false
+        - block:
+            - name: template kubeadm-init.yml
+              template:
+                src: ./template/kubeadm-init.yml.j2
+                dest: /tmp/kubeadm-init.yml
+            - name: Initialize K8S
+              shell: "kubeadm init --config /tmp/kubeadm-init.yml"
+              register: kubeadm_resutl
+            - name: copy
+              copy:
+                content: "{{ kubeadm_resutl }}"
+                dest: /tmp/kubeadm_result
+            - name: synchronize kubeadm_result to localhost
+              synchronize:
+                src: /tmp/kubeadm_result
+                dest: /tmp/kubeadm_result
+                mode: pull
+          when: firstmaster_result.rc !=0
+      when:
+        - inventory_hostname == FIRSTMASTER
+        - K8S_result.rc != 0

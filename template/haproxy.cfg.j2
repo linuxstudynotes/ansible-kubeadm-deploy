@@ -1,0 +1,8 @@
+#{{ ansible_managed }}
+
+listen k8s_api_masters_6443
+        bind {{ VIP }}:6443
+        mode tcp
+{% for host in groups['master'] %}
+server {{ hostvars[host].ansible_facts.default_ipv4.address }} {{ hostvars[host].ansible_facts.default_ipv4.address }}:6443 check inter 2000 fall 3 rise 5
+{% endfor %}

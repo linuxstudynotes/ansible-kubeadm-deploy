@@ -1,0 +1,55 @@
+---
+- name: add master and node
+  hosts: master,node,localhost
+  gather_facts: false
+  serial: 1
+  vars:
+    ansible_connection: ssh
+  tasks:
+    - name: Check if K8S cluster exists
+      command: "kubectl get nodes"
+      register: K8S_result
+      ignore_errors: yes
+      delegate_to: localhost
+      run_once: true
+      changed_when: false
+    - block:
+        - name: get certificate-key
+          shell: "kubeadm init phase upload-certs --upload-certs | tail -n1"
+          register: certificate_key
+          delegate_to: "{{ FIRSTMASTER }}"
+          run_once: true
+        - name: Wait 10S
+          pause:
+            seconds: 10
+        - name: join control
+          vars:
+            token: "{{ lookup('file','/tmp/kubeadm_result') | regex_findall('--token ([a-z|\\.|0-9]+\\b)') }}"
+            cert_hash: "{{ lookup('file','/tmp/kubeadm_result') | regex_findall('(sha[0-9|a-z|:]+)\\b') }}"
+          shell: "kubeadm join {{ VIP }}:6443 --token {{ token.0 }} --discovery-token-ca-cert-hash {{ cert_hash.0 }} --control-plane --certificate-key {{ certificate_key.stdout }}"
+          retries: 5
+          delay: 3
+          when:
+            - inventory_hostname in groups.master
+            - inventory_hostname != FIRSTMASTER
+        - name: check if .kube exists
+          stat:
+            path: "{{ HOME_PATH }}/.kube"
+          register: kube
+          when:
+            - inventory_hostname in groups['master']
+        - name: create kubernetes user
+          shell: "mkdir -p /root/.kube && sudo cp -i /etc/kubernetes/admin.conf /root/.kube/config && sudo chown 0:0 /root/.kube/config"
+          when: kube.stat.exists == false
+          when:
+            - inventory_hostname in groups['master']
+      when: K8S_result.rc != 0
+    - name: join work
+      vars:
+        token: "{{ lookup('file','/tmp/kubeadm_result') | regex_findall('--token ([a-z|\\.|0-9]+\\b)') }}"
+        cert_hash: "{{ lookup('file','/tmp/kubeadm_result') | regex_findall('(sha[0-9|a-z|:]+)\\b') }}"
+      shell: "kubeadm join {{ VIP }}:6443 --token {{ token.0 }} --discovery-token-ca-cert-hash {{ cert_hash.0 }}"
+      retries: 5
+      delay: 3
+      when:
+        - inventory_hostname in groups['node']

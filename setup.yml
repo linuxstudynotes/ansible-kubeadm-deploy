@@ -1,0 +1,12 @@
+---
+- name: Get the latest cache
+  hosts: all,localhost
+  gather_facts: false
+  vars:
+    ansible_connection: ssh
+  tasks:
+    - name: Get the latest cache
+      setup:
+    - name: check if get cache
+      debug:
+        msg: "{{ ansible_facts.fqdn }} has fetched the latest cache"
