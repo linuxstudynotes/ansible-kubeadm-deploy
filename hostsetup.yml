@@ -46,7 +46,7 @@
     ansible_connection: ssh
   tasks:
     - name: set timezone
-      command: "timedatectl set-timezone Asia/Shanghai"
+      command: "timedatectl set-timezone {{ TIMEZONE }}"
       changed_when: false
 
 - name: get /etc/hosts and set /etc/apt/apt.conf.d/20auto-upgrades
