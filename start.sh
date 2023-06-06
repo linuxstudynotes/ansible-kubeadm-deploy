@@ -17,6 +17,8 @@ ansible-playbook add_master_and_node.yml
 sleep 3
 ansible-playbook final_setup_and_cleanup.yml
 sleep 3
-mkdir -p /root/.kube && sudo cp -i /etc/kubernetes/admin.conf /root/.kube/config && sudo chown 0:0 /root/.kube/config
+if [ ! -d ~/.kube ] ; then
+	mkdir -p /root/.kube && sudo cp -i /etc/kubernetes/admin.conf /root/.kube/config && sudo chown $(id -u):$(id -g) /root/.kube/config
+fi
 kubectl apply -f kube-flannel.yml
 source /etc/profile.d/kubernetes.sh

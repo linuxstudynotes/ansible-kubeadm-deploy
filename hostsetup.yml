@@ -16,10 +16,6 @@
       template:
         src: ./template/sources.list.j2
         dest: /etc/apt/sources.list
-    - name: synchronize timezone
-      template:
-        src: ./template/timezone.j2
-        dest: /etc/timezone
     - block:
         - name: delete swap
           lineinfile:
@@ -93,6 +89,7 @@
         src: /etc/hosts
         dest: /etc/hosts
         mode: pull
+      when: inventory_hostname == FIRSTMASTER 
 
 - name: set master and node bash
   hosts: master,node
