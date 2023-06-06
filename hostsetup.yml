@@ -57,7 +57,7 @@
       lineinfile:
         path: /etc/systemd/resolved.conf
         insertafter: 'Resolve'
-        line: 'Domains=study.com'
+        line: 'Domains={{ DNSSEARCH }}'
     - name: set /etc/apt/apt.conf.d/20auto-upgrades
       template:
         src: ./template/20auto-upgrades.j2
@@ -129,9 +129,18 @@
       template:
         src: ./template/20-keepalived.conf.j2
         dest: /etc/sysctl.d/20-keepalived.conf
+      notify: reboot_haproxy
+  handlers:
+    - name: reboot haproxy
+      reboot:
+      listen: reboot_haproxy
+    - name: Check if the server is up
+      wait_for_connection:
+        delay: 10
+        timeout: 300
 
 - name: set kernel and modules
-  hosts: all
+  hosts: master,node
   gather_facts: false
   vars_files:
     - ./vars/modules.yml
@@ -140,14 +149,18 @@
       template:
         src: ./template/20-k8s.conf.j2
         dest: /etc/sysctl.d/20-k8s.conf
+      notify: reboot_master_and_node
     - name:
       lineinfile:
         path: /etc/modules-load.d/modules.conf
         line: "{{ item }}"
       loop: "{{ modules }}"
+      notify: reboot_master_and_node
+  handlers:
     - name: reboot
       reboot:
       ignore_errors: true
+      listen: reboot_master_and_node
     - name: Check if the server is up
       wait_for_connection:
         delay: 10
