@@ -1,0 +1,72 @@
+---
+- name: set Load Balancing
+  hosts: master,haproxy,localhost
+  gather_facts: false
+  vars:
+    ansible_connection: ssh
+  tasks:
+    - name: install haproxy,keepalived
+      apt:
+        name: haproxy,keepalived
+        state: present
+        update_cache: yes
+      when: inventory_hostname in groups.haproxy
+    - name: get /etc/haproyx/haproxy.cfg
+      command: "cat /etc/haproxy/haproxy.cfg"
+      register: haproxy_cfg
+      changed_when: false
+      delegate_to: "{{ FIRSTHAPROXY }}"
+      run_once: true
+    - name: Check if VIP health
+      command: "ping -c3 {{ VIP }}"
+      register: keepalived
+      when: inventory_hostname in groups['haproxy']
+      ignore_errors: true
+      changed_when: false
+      notify: restart keepalived
+    - name: template keepalived.conf
+      template:
+        src: ./template/keepalived.conf.j2
+        dest: /etc/keepalived/keepalived.conf
+      notify: restart keepalived
+      when: 
+        - inventory_hostname in groups['haproxy']
+        - keepalived.rc != 0
+
+    - name: get template of haproxy.cfg 
+      template:
+        src: ./template/haproxy.cfg.j2
+        dest: /tmp/haproxy.cfg
+      notify: delete haproxy.cfg.tmp
+      when: 
+        - inventory_hostname == 'localhost'
+        - VIP not in haproxy_cfg.stdout
+    - name: set haproxy.cfg
+      lineinfile:
+        path: /etc/haproxy/haproxy.cfg
+        line: "{{ lookup('file', '/tmp/haproxy.cfg') }}"
+      notify: restart haproxy
+      when: 
+        - inventory_hostname in groups['haproxy']
+        - VIP not in haproxy_cfg.stdout
+  handlers:
+    - name: delete template of haproxy.cfg 
+      file:
+        path: /tmp/haproxy.cfg
+        state: absent
+      when: inventory_hostname == 'localhost'
+      listen: delete haproxy.cfg.tmp
+    - name: set keepalived service
+      service:
+        name: keepalived
+        state: restarted
+        enabled: yes
+      when: inventory_hostname in groups['haproxy']
+      listen: restart keepalived
+    - name: set keepalived service
+      service:
+        name: haproxy
+        state: restarted
+        enabled: yes
+      when: inventory_hostname in groups['haproxy']
+      listen: restart haproxy

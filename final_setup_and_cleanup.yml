@@ -1,0 +1,37 @@
+---
+- name: Final setup and cleanup
+  hosts: master,localhost
+  gather_facts: false
+  vars:
+    ansible_connection: ssh
+  tasks:
+    - name: Check if K8S cluster exists
+      command: "kubectl get nodes"
+      register: k8s_localhost_result
+      ignore_errors: yes
+      delegate_to: localhost
+      run_once: true
+      changed_when: false
+    - block:
+        - name: delete kubeadm_result
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /tmp/kubeadm-init.yml
+            - /tmp/kubeadm_result
+          when:
+            - inventory_hostname == 'localhost' or inventory_hostname == FIRSTMASTER
+        - name: create dir
+          file:
+            path: /etc/kubernetes
+            state: directory
+          when: inventory_hostname == 'localhost'
+        - name:
+          synchronize:
+            src: /etc/kubernetes/admin.conf
+            dest: /etc/kubernetes/admin.conf
+            mode: pull
+          when: inventory_hostname == FIRSTMASTER
+      when:
+        - k8s_localhost_result.rc != 0

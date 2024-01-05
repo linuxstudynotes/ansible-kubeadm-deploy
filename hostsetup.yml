@@ -1,0 +1,167 @@
+---
+- name: set hosts
+  hosts: all
+  vars:
+    ansible_connection: ssh
+  tasks:
+    - name: set hostname
+      hostname:
+        name: "{{ HOSTNAME }}"
+    - name: set dnssearch
+      lineinfile:
+        path: /etc/resolv.conf
+        regexp: '^search'
+        line: 'search {{ DNSSEARCH }}'
+    - name: synchronize sources.list
+      template:
+        src: ./template/sources.list.j2
+        dest: /etc/apt/sources.list
+    - block:
+        - name: delete swap
+          lineinfile:
+            path: /etc/fstab
+            regexp: 'swap'
+            state: absent
+        - name: close swap
+          command: "swapoff -a"
+          when: ansible_facts.swaptotal_mb != 0
+        - name: synchronize apt-k8s-key.gpg
+          synchronize:
+            src: ./file/apt-k8s-key.gpg
+            dest: /etc/apt/trusted.gpg.d/apt-k8s-key.gpg
+        - name: synchronize kubernetes.list
+          template:
+            src: ./template/kubernetes.list.j2
+            dest: /etc/apt/sources.list.d/kubernetes.list
+      when: "inventory_hostname in groups['master'] or inventory_hostname in groups['node']"
+    - name: update_cache
+      apt:
+        update_cache: yes
+      changed_when: false
+
+- name: set timezone Asia/Shanghai
+  hosts: all,localhost
+  gather_facts: false
+  vars:
+    ansible_connection: ssh
+  tasks:
+    - name: set timezone
+      command: "timedatectl set-timezone {{ TIMEZONE }}"
+      changed_when: false
+
+- name: get /etc/hosts and set /etc/apt/apt.conf.d/20auto-upgrades
+  hosts: localhost,all
+  gather_facts: false
+  tasks: 
+    - name: set domain search
+      lineinfile:
+        path: /etc/systemd/resolved.conf
+        insertafter: 'Resolve'
+        line: 'Domains={{ DNSSEARCH }}'
+    - name: set /etc/apt/apt.conf.d/20auto-upgrades
+      template:
+        src: ./template/20auto-upgrades.j2
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: '0644'
+        owner: root
+        group: root
+
+- name: get /etc/hosts 
+  hosts: all
+  gather_facts: false
+  tasks: 
+    - name: get /etc/hosts
+      template:
+        src: ./template/hosts.j2
+        dest: /etc/hosts
+        mode: '0644'
+        owner: root
+        group: adm
+
+- name: get /etc/hosts to localhost
+  hosts: localhost,master
+  gather_facts: false
+  vars:
+    ansible_connection: ssh
+  tasks:
+    - name: synchronize /etc/hosts to localhost
+      synchronize:
+        src: /etc/hosts
+        dest: /etc/hosts
+        mode: pull
+      when: inventory_hostname == FIRSTMASTER 
+
+- name: set master and node bash
+  hosts: master,node
+  gather_facts: false
+  vars:
+    ansible_connection: ssh
+  tasks:
+    - name: synchronize kubernetes.sh nerdctl.sh
+      template:
+        src: "{{ item.file }}"
+        dest: "{{ item.dest_file }}"
+      loop: 
+        - file: ./template/kubernetes.sh.j2
+          dest_file: /etc/profile.d/kubernetes.sh
+        - file: ./template/nerdctl.sh.j2
+          dest_file: /etc/profile.d/nerdctl.sh
+
+- name: set localhost bash
+  hosts: localhost
+  gather_facts: false
+  vars:
+    ansible_connection: ssh
+  tasks:
+    - name: synchronize nerdctl.sh
+      template:
+        src: "{{ item.file }}"
+        dest: "{{ item.dest_file }}"
+      loop:
+        - file: ./template/kubernetes.sh.j2
+          dest_file: /etc/profile.d/kubernetes.sh
+
+- name: set net.ipv4.ip_nonlocal_bind
+  hosts: haproxy
+  gather_facts: false
+  tasks:
+    - name: synchronize ketrnel-conf
+      template:
+        src: ./template/20-keepalived.conf.j2
+        dest: /etc/sysctl.d/20-keepalived.conf
+      notify: reboot_haproxy
+  handlers:
+    - name: reboot haproxy
+      reboot:
+      listen: reboot_haproxy
+    - name: Check if the server is up
+      wait_for_connection:
+        delay: 10
+        timeout: 300
+
+- name: set kernel and modules
+  hosts: master,node
+  gather_facts: false
+  vars_files:
+    - ./vars/modules.yml
+  tasks:
+    - name: copy 20-k8s.conf
+      template:
+        src: ./template/20-k8s.conf.j2
+        dest: /etc/sysctl.d/20-k8s.conf
+      notify: reboot_master_and_node
+    - name:
+      lineinfile:
+        path: /etc/modules-load.d/modules.conf
+        line: "{{ item }}"
+      loop: "{{ modules }}"
+      notify: reboot_master_and_node
+  handlers:
+    - name: reboot
+      reboot:
+      ignore_errors: true
+      listen: reboot_master_and_node
+    - name: Check if the server is up
+      wait_for_connection:
+        delay: 10
+        timeout: 300

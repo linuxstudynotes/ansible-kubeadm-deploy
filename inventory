@@ -1,0 +1,29 @@
+[master]
+k8s-master-1 ansible_ssh_host=192.168.31.11 HOSTNAME=k8s-master-1.study.com DNSSEARCH=study.com
+k8s-master-2 ansible_ssh_host=192.168.31.12 HOSTNAME=k8s-master-2.study.com DNSSEARCH=study.com
+k8s-master-3 ansible_ssh_host=192.168.31.13 HOSTNAME=k8s-master-3.study.com DNSSEARCH=study.com
+
+[haproxy]
+haproxy-1 ansible_ssh_host=192.168.31.14 HOSTNAME=haproxy-1.study.com DNSSEARCH=study.com WEIGHT=100
+haproxy-2 ansible_ssh_host=192.168.31.15 HOSTNAME=haproxy-2.study.com DNSSEARCH=study.com WEIGHT=80
+haproxy-3 ansible_ssh_host=192.168.31.16 HOSTNAME=haproxy-3.study.com DNSSEARCH=study.com WEIGHT=60
+
+[node]
+k8s-node-1 ansible_ssh_host=192.168.31.17 HOSTNAME=k8s-node-1.study.com DNSSEARCH=study.com
+k8s-node-2 ansible_ssh_host=192.168.31.18 HOSTNAME=k8s-node-2.study.com DNSSEARCH=study.com
+k8s-node-3 ansible_ssh_host=192.168.31.19 HOSTNAME=k8s-node-3.study.com DNSSEARCH=study.com
+
+[haproxy:vars]
+INTERFACES=ens33
+
+[all:vars]
+FIRSTMASTER=k8s-master-1
+FIRSTHAPROXY=haproxy-1
+TIMEZONE=Asia/Shanghai
+VIP=192.168.31.20
+K8S_CLUSTER_NAME=k8s-cluster-1
+K8S_VERSION=1.27.2
+KUBEADM_REGISTRY=registry.aliyuncs.com/google_containers
+CONTAINER_REGISTRY=registry.aliyuncs.com
+PASUE_REGISTRY_VERSION=registry.aliyuncs.com/google_containers/pause:3.9
+HOME_PATH=/root

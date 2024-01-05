@@ -1,0 +1,36 @@
+---
+- name: mount sdb
+  hosts: node
+  gather_facts: false
+  tasks:
+    - block:
+        - name: create a new part
+          parted:
+            device: /dev/sdb
+            number: 1
+            part_end: "100%"
+            state: present
+        - name: make filesystem
+          filesystem:
+            fstype: xfs
+            dev: /dev/sdb1
+        - name: mkdir /var/lib/containerd
+          file:
+            path: /var/lib/containerd
+            state: directory
+        - name: get sdbuuid
+          command: "blkid /dev/sdb1"
+          register: uuid
+          changed_when: false
+        - name: set fact
+          set_fact:
+            UUID: "{{ uuid.stdout | regex_findall('\\b(UUID.*) BLOCK') | regex_replace('\\[|\\]','') | string | regex_replace(\"'\", '') }}"
+        - name: set fstab
+          lineinfile:
+            path: /etc/fstab
+            insertafter: 'boot'
+            line: "{{ UUID }}\t/var/lib/containerd\txfs\tdefaults\t0 0"
+        - name: mouna -a
+          command: "mount -a"
+          changed_when: false
+      when: "'sdb' in ansible_facts.devices"
